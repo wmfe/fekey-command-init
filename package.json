@@ -1,6 +1,6 @@
 {
   "name": "fekey-command-init",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "scaffold for fekey",
   "main": "index.js",
   "scripts": {
