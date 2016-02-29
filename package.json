@@ -1,6 +1,6 @@
 {
   "name": "fekey-command-init",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "scaffold for fekey",
   "main": "index.js",
   "scripts": {
@@ -19,5 +19,10 @@
   "bugs": {
     "url": "https://github.com/wmfe/fekey-command-init/issues"
   },
-  "homepage": "https://github.com/wmfe/fekey-command-init#readme"
+  "homepage": "https://github.com/wmfe/fekey-command-init#readme",
+  "dependencies": {
+    "bluebird": "2.9.21",
+    "findup": "0.1.5",
+    "fis-scaffold-kernel": "~0.1.1"
+  }
 }
