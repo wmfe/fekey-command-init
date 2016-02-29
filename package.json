@@ -1,0 +1,23 @@
+{
+  "name": "fekey-command-init",
+  "version": "1.0.0",
+  "description": "scaffold for fekey",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wmfe/fekey-command-init.git"
+  },
+  "keywords": [
+    "fekey",
+    "init"
+  ],
+  "author": "flippyxu",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/wmfe/fekey-command-init/issues"
+  },
+  "homepage": "https://github.com/wmfe/fekey-command-init#readme"
+}
