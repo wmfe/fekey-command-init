@@ -1,238 +1,330 @@
-/**
- * 命令行相关的信息和工具类方法暴露在此模块中。
- * @namespace fis.cli
- */
-var cli = module.exports = {};
-
+var Promise = require('bluebird');
+var fs = require('fs');
 var path = require('path');
-var _ = require('./util.js');
-var util = require('util');
-var lolcat = require('fis-lolcat');
-
-/**
- * 命令行工具名字
- * @memberOf fis.cli
- * @name name
- * @defaultValue fis3
- */
-cli.name = 'fekey';
-
-/**
- * 指向 {@link https://www.npmjs.com/package/colors colors} 模块。
- * @memberOf fis.cli
- * @name colors
- */
-cli.colors = require('colors');
-
-//commander object
-cli.commander = null;
-
-/**
- * package.json 中的信息
- * @memberOf fis.cli
- * @name info
- */
-cli.info = fis.util.readJSON(path.dirname(__dirname) + '/package.json');
-
-/**
- * 显示帮助信息，主要用来格式化信息，处理缩进等。fis command 插件，可以用此方法来输出帮助信息。
- *
- * @param  {String} [cmdName]  命令名称
- * @param  {Object} [options]  配置
- * @param  {Array} [commands] 支持的命令集合
- * @memberOf fis.cli
- * @name help
- * @function
- */
-cli.help = function(cmdName, options, commands) {
-  var strs = [
-    '',
-    ' Usage: ' + cli.name + ' ' + (cmdName ? cmdName : '<command>')
-  ];
-
-  if (!cmdName) {
-    commands = {};
-    fis.media().get('modules.commands', []).forEach(function(name) {
-      var cmd = fis.require('command', name);
-      name = cmd.name || name;
-      name = fis.util.pad(name, 12);
-      commands[name] = cmd.desc || '';
-    });
-
-    options =  {
-      '-h, --help': 'print this help message',
-      '-v, --version': 'print product version and exit',
-      '-r, --root <path>': 'specify project root',
-      '-f, --file <filename>': 'specify the file path of `fis-conf.js`',
-      '--no-color': 'disable colored output',
-      '--verbose': 'enable verbose mode'
-    };
-  }
-
-  options = options || {};
-  commands = commands || {};
-  var optionsKeys = Object.keys(options);
-  var commandsKeys = Object.keys(commands);
-  var maxWidth;
-
-  if (commandsKeys.length) {
-    maxWidth = commandsKeys.reduce(function(prev, curr) {
-      return curr.length > prev ? curr.length : prev;
-    }, 0) + 4;
-
-    strs.push(null, ' Commands:', null);
-
-    commandsKeys.forEach(function(key) {
-      strs.push(util.format('   %s %s', _.pad(key, maxWidth), commands[key]));
-    });
-  }
-
-  if (optionsKeys.length) {
-    maxWidth = optionsKeys.reduce(function(prev, curr) {
-      return curr.length > prev ? curr.length : prev;
-    }, 0) + 4;
-
-    strs.push(null, ' Options:', null);
-
-    optionsKeys.forEach(function(key) {
-      strs.push(util.format('   %s %s', _.pad(key, maxWidth), options[key]));
-    });
-
-    strs.push(null);
-  }
-
-  console.log(strs.join('\n'));
+var exists = fs.existsSync;
+var write = fs.writeFileSync;
+var read = function(filepath) {
+  return fis.util.read(filepath);
 };
+var rVariable = /\#\{([\w\.\-_]+)(?:\s+(.+?))?\}/g;
+var child_process = require('child_process');
 
-fis.set('modules.commands', ['init', 'install', 'release', 'server', 'inspect']);
+exports.name = 'init';
+exports.usage = '<template>';
+exports.desc = 'scaffold with specifed template.';
 
-/**
- * 输出 fis 版本信息。
- *
- * ```
- * v3.0.0
- *
- * /\\\\\\\\\\\\\\\  /\\\\\\\\\\\     /\\\\\\\\\\\
- * \/\\\///////////  \/////\\\///    /\\\/////////\\\
- *  \/\\\                 \/\\\      \//\\\      \///
- *   \/\\\\\\\\\\\         \/\\\       \////\\\
- *    \/\\\///////          \/\\\          \////\\\
- *     \/\\\                 \/\\\             \////\\\
- *      \/\\\                 \/\\\      /\\\      \//\\\
- *       \/\\\              /\\\\\\\\\\\ \///\\\\\\\\\\\/
- *        \///              \///////////    \///////////
- * ```
- *
- * @memberOf fis.cli
- * @name version
- * @function
- */
-cli.version = function() {
-  var content = ['',
-    '  v' + cli.info.version,
-    ''
-  ].join('\n');
+exports.register = function(commander) {
+  var Scaffold = require('fis-scaffold-kernel');
+  var scaffold;
 
-  var logo;
+  commander
+    .option('-r, --root <path>', 'set project root')
+    .action(function(template) {
+      var args = [].slice.call(arguments);
+      var options = args.pop();
 
-  if (fis.util.isWin()) {
-    logo = [
-      ' __' + '/\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\'.bold.red + '__' + '/\\\\\\\\\\\\\\\\\\\\\\'.bold.yellow + '_____' + '/\\\\\\\\\\\\\\\\\\\\\\'.bold.green + '___',
-      '  _' + '\\/\\\\\\///////////'.bold.red + '__' + '\\/////\\\\\\///'.bold.yellow + '____' + '/\\\\\\/////////\\\\\\'.bold.green + '_' + '       ',
-      '   _' + '\\/\\\\\\'.bold.red + '_________________' + '\\/\\\\\\'.bold.yellow + '______' + '\\//\\\\\\'.bold.green + '______' + '\\///'.bold.green + '__',
-      '    _' + '\\/\\\\\\\\\\\\\\\\\\\\\\'.bold.red + '_________' + '\\/\\\\\\'.bold.yellow + '_______' + '\\////\\\\\\'.bold.green + '_________' + '     ',
-      '     _' + '\\/\\\\\\///////'.bold.red + '__________' + '\\/\\\\\\'.bold.yellow + '__________' + '\\////\\\\\\'.bold.green + '______' + '    ',
-      '      _' + '\\/\\\\\\'.bold.red + '_________________' + '\\/\\\\\\'.bold.yellow + '_____________' + '\\////\\\\\\'.bold.green + '___' + '   ',
-      '       _' + '\\/\\\\\\'.bold.red + '_________________' + '\\/\\\\\\'.bold.yellow + '______' + '/\\\\\\'.bold.green + '______' + '\\//\\\\\\'.bold.green + '__',
-      '        _' + '\\/\\\\\\'.bold.red + '______________' + '/\\\\\\\\\\\\\\\\\\\\\\'.bold.yellow + '_' + '\\///\\\\\\\\\\\\\\\\\\\\\\/'.bold.green + '___',
-      '         _' + '\\///'.bold.red + '______________' + '\\///////////'.bold.yellow + '____' + '\\///////////'.bold.green + '_____',
-      ''
-    ].join('\n');
-  } else {
-    logo = [
-      '   /\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\  /\\\\\\\\\\\\\\\\\\\\\\     /\\\\\\\\\\\\\\\\\\\\\\   ',
-      '   \\/\\\\\\///////////  \\/////\\\\\\///    /\\\\\\/////////\\\\\\        ',
-      '    \\/\\\\\\                 \\/\\\\\\      \\//\\\\\\      \\///  ',
-      '     \\/\\\\\\\\\\\\\\\\\\\\\\         \\/\\\\\\       \\////\\\\\\              ',
-      '      \\/\\\\\\///////          \\/\\\\\\          \\////\\\\\\          ',
-      '       \\/\\\\\\                 \\/\\\\\\             \\////\\\\\\      ',
-      '        \\/\\\\\\                 \\/\\\\\\      /\\\\\\      \\//\\\\\\  ',
-      '         \\/\\\\\\              /\\\\\\\\\\\\\\\\\\\\\\ \\///\\\\\\\\\\\\\\\\\\\\\\/   ',
-      '          \\///              \\///////////    \\///////////     ',
-      ''
-    ].join('\n');
-  }
+      var settings = {
+        root: options.root || '',
+        template: args[0] || 'default',
+        version: 1,
+        onCollectVariables: null,
+        onVaraiblesResolved: null,
+        onContentReplace: null,
+        onReplaced: null
+      };
 
-  if (fis.get('options.color') !== false) {
-    logo = lolcat(logo);
-  }
-  console.log(content + '\n' + logo);
-};
+      if(settings.template != "default") {
+        fis.config.set('scaffold.namespace', 'wmfe');
+        fis.config.set('scaffold.prefix', 'fekey-scaffold-');
+      }
 
-/**
- * fis命令行执行入口。
- * @param  {Array} argv 由 {@link https://github.com/substack/minimist minimist} 解析得到的 argv, 已经转换成了对象。
- * @param  {Array} env  liftoff env
- * @name run
- * @memberOf fis.cli
- * @function
- */
-cli.run = function(argv, env) {
-  // [node, realPath(bin/fis.js)]
-  var argvRaw = process.argv;
+      // 根据 fis-conf.js 确定 root 目录
+      Promise.try(function() {
+        if (!settings.root) {
+          var findup = require('findup');
 
-  process.title = cli.name +' ' + process.argv.slice(2).join(' ') + ' [ ' + env.cwd + ' ]';
+          return new Promise(function(resolve, reject) {
+            var fup = findup(process.cwd(), 'fis-conf.js');
+            var dir = null;
 
-  if (argv.verbose) {
-    fis.log.level = fis.log.L_ALL;
-  }
+            fup.on('found', function(found) {
+              dir = found;
+              fup.stop();
+            });
 
-  fis.set('options', argv);
-  fis.project.setProjectRoot(env.cwd);
+            fup.on('error', reject);
 
-   // 如果指定了 media 值
-  if (['release', 'inspect'].indexOf(argv._[0]) > -1 && argv._[1]) {
-    fis.project.currentMedia(argv._[1]);
-  }
+            fup.on('end', function() {
+              resolve(dir);
+            });
+          })
 
-  env.configPath = env.configPath || argv.f || argv.file;
-  if (env.configPath) {
-    try {
-      require(env.configPath);
-    } catch (e) {
-      fis.log.error('Load %s error: %s \n %s', env.configPath, e.message, e.stack);
-    }
+          .then(function(dir) {
+            settings.root = dir || process.cwd();
+          });
+        }
+      })
 
-    fis.emit('conf:loaded');
-  }
+      // load fis-conf.js if exists.
+      // 读取用户配置信息。
+      // .then(function() {
+      //   var filepath = path.resolve(settings.root, 'fis-conf.js');
 
-  if (fis.media().get('options.color') === false) {
-    cli.colors.mode = 'none';
-  }
+      //   if (exists(filepath)) {
+      //     require(filepath);
+      //   }
+      // })
 
-  var location = env.modulePath ? path.dirname(env.modulePath) : path.join(__dirname, '../');
-  fis.log.info('Currently running %s (%s)', cli.name, location);
+      // downloading...
+      .then(function() {
+        fis.log.info('Dir: %s', settings.root);
 
-  if (!argv._.length) {
-    cli[argv.v || argv.version ? 'version' : 'help']();
-  } else {
+        return new Promise(function(resolve, reject) {
+          var SimpleTick = require('./lib/tick.js');
+          var bar;
 
-    // tip
-    // if (argvRaw[2] === 'release' && !env.modulePath) {
-    //   fis.log.warning('Local `fis3` not found, use global version instead.');
-    // }
+          var repos = settings.template;
+          var type = 'github';
+          var idx = repos.indexOf(':');
 
-    //fix args
-    var p = argvRaw.indexOf('--no-color');
-    ~p && argvRaw.splice(p, 1);
+          if (~idx) {
+            type = repos.substring(0, idx);
+            repos = repos.substring(idx + 1);
+          }
+          if (!~repos.indexOf('/')) {
+            if(settings.template != "default") {
+              repos = fis.config.get('scaffold.prefix', '') + repos;
+            }
+            repos = fis.config.get('scaffold.namespace', 'fis-scaffold') + '/' + repos;
+          }
 
-    p = argvRaw.indexOf('--media');
-    ~p && argvRaw.splice(p, argvRaw[p + 1][0] === '-' ? 1 : 2);
+          function progress() {
+            bar = bar || new SimpleTick('downloading `' + repos + '` ');
+            bar.tick();
+          }
 
-    //register command
-    var commander = cli.commander = require('commander');
-    var cmd = fis.require('command', argvRaw[2]);
+          scaffold = new Scaffold({
+            type: type,
+            log: {
+              level: 0
+            }
+          });
+          scaffold.download(repos, function(error, location) {
+            if (error) {
+              return reject(error);
+            }
 
-    cmd.run(argv, cli, env);
-  }
+            bar.clear();
+            resolve(location)
+          }, progress);
+        });
+      })
+
+      .then(function(tempdir) {
+        var script =  path.join(tempdir, '.scaffold.js');
+
+        if (exists(script)) {
+          try {
+            require(script)(settings);
+          } catch(e) {}
+
+          scaffold.util.del(script);
+
+          if (settings.version > 1) {
+            rVariable =  /\#\{\{([\w\.\-_]+)(?:\s+(.+?))?\}\}/g;
+          }
+        }
+
+        return tempdir;
+      })
+
+      // collect variables.
+      .then(function(tempdir) {
+        var files = scaffold.util.find(tempdir);
+        var variables = {};
+
+        files.forEach(function(filename) {
+          var m; 
+          var i = 0;
+          while ((m = rVariable.exec(filename))) {
+            variables[m[1]] = variables[m[1]] || m[2];
+          }
+          var contents = read(filename);
+
+          if (typeof contents !== 'string') {
+            return;
+          }
+
+          while ((m = rVariable.exec(contents))) {
+            variables[m[1]] = variables[m[1]] || m[2];
+          }
+        });
+        console.log(variables);
+        settings.onCollectVariables && settings.onCollectVariables(variables);
+
+        return {
+          files: files,
+          variables: variables,
+          dir: tempdir
+        };
+      })
+
+      // prompt
+      .then(function(info) {
+        var schema = [];
+        var variables = info.variables;
+        Object.keys(variables).forEach(function(key) {
+          schema.push({
+            name: key,
+            required: true,
+            'default': variables[key]
+          });
+        });
+        if (schema.length) {
+          return new Promise(function(resolve, reject) {
+            scaffold.prompt(schema, function(error, result) {
+              if (error) {
+                return reject(error);
+              }
+
+              info.variables = result;
+              resolve(info);
+            });
+          });
+        }
+
+        settings.onVaraiblesResolved && settings.onVaraiblesResolved(info.variables, info);
+
+        return info;
+      })
+
+
+      // replace
+      .then(function(info) {
+        var files = info.files;
+        var variables = info.variables;
+
+        files.forEach(function(filepath) {
+          var contents = read(filepath);
+          if (typeof contents !== 'string') {
+            return;
+          }
+
+          contents = contents.replace(rVariable, function(_, key) {
+            return variables[key];
+          });
+
+          settings.onContentReplace && (contents = settings.onContentReplace(contents, filepath))
+
+          write(filepath, contents);
+        });
+
+        settings.onReplaced && settings.onReplaced(info);
+        return info;
+      })
+
+      // deliver
+      .then(function(info) {
+        var files = info.files;
+        var root = info.dir;
+        var variables = info.variables;
+        var roadmap = [];
+
+        files.forEach(function(filepath) {
+          if (rVariable.test(filepath)) {
+            var pattern = filepath.substring(root.length);
+            var resolved = pattern.replace(rVariable, function(_, key) {
+              return variables[key];
+            });
+
+            roadmap.push({
+              reg: pattern,
+              release: resolved
+            });
+          }
+        });
+
+        roadmap.push({
+          reg: /^\/readme\.md/i,
+          release: false
+        });
+
+        roadmap.push({
+          reg: /^.*$/i,
+          release: '$0'
+        });
+
+        scaffold.deliver(root, settings.root, roadmap);
+        return info;
+      })
+
+      // npm install
+      .then(function(info) {
+        var packageJson = path.join(settings.root, 'package.json');
+
+        if (exists(packageJson)) {
+          var config = require(packageJson);
+
+          if (config.dependencies || config.devDependencies) {
+
+            // run `npm install`
+            return new Promise(function(resolve, reject) {
+              var spawn = child_process.spawn;
+              console.log('npm install');
+
+              var npm = process.platform === "win32" ? "npm.cmd" : "npm";
+              var install = spawn(npm, ['install'], {
+                cwd: settings.root
+              });
+              install.stdout.pipe(process.stdout);
+              install.stderr.pipe(process.stderr);
+
+              install.on('error', function(reason) {
+                reject(reason);
+              });
+
+              install.on('close', function() {
+                resolve(info);
+              });
+            });
+          }
+        }
+
+        return info;
+      })
+
+      // fis install
+      .then(function(info) {
+        var json = path.join(settings.root, 'component.json');
+
+        if (exists(json)) {
+          var config = require(json);
+
+          // run `npm install`
+          return new Promise(function(resolve, reject) {
+            var spawn = child_process.spawn;
+            console.log('Installing components...');
+
+            var install = spawn(process.execPath, [process.argv[1], 'install']);
+            install.stdout.pipe(process.stdout);
+            install.stderr.pipe(process.stderr);
+
+            install.on('error', function(reason) {
+              reject(reason);
+            });
+
+            install.on('close', function() {
+              resolve(info);
+            });
+          });
+        }
+
+        return info;
+      })
+
+      .then(function(info) {
+        console.log('\nDone!');
+      });
+
+    });
 };
